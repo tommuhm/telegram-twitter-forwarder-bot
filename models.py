@@ -2,9 +2,18 @@ import datetime
 
 import tweepy
 from peewee import (Model, DateTimeField, ForeignKeyField, BigIntegerField, CharField,
-                    IntegerField, TextField, OperationalError, BooleanField)
+                    IntegerField, OperationalError, BooleanField)
 from playhouse.migrate import migrate, SqliteMigrator, SqliteDatabase
 from tweepy.auth import OAuthHandler
+
+
+class TwitterUser(Model):
+    screen_name = CharField(unique=True)
+    name = CharField()
+
+    @property
+    def full_name(self):
+        return "{} ({})".format(self.name, self.screen_name)
 
 
 class TelegramChat(Model):
@@ -37,10 +46,16 @@ class TelegramChat(Model):
         return tweepy.API(auth)
 
 
+class Subscription(Model):
+    tg_chat = ForeignKeyField(TelegramChat, related_name="subscriptions")
+    tw_user = ForeignKeyField(TwitterUser, related_name="subscriptions")
+
+
 class Media:
     def __init__(self, type, url):
         self.type = type
         self.url = url
+
 
 class Tweet:
     def __init__(self, *args, **kwargs):
@@ -55,13 +70,16 @@ class Tweet:
         for k in kwargs:
             setattr(self, k, kwargs[k])
 
+
 # Create tables
-TelegramChat.create_table(fail_silently=True)
+for t in (TwitterUser, TelegramChat, Subscription):
+    t.create_table(fail_silently=True)
 
 # Migrate new fields. TODO: think of some better migration mechanism
 db = SqliteDatabase('peewee.db', timeout=10)
 migrator = SqliteMigrator(db)
 operations = [
+    migrator.add_column('twitteruser', 'last_fetched', TwitterUser.last_fetched),
     migrator.add_column('telegramchat', 'twitter_request_token', TelegramChat.twitter_request_token),
     migrator.add_column('telegramchat', 'twitter_token', TelegramChat.twitter_token),
     migrator.add_column('telegramchat', 'twitter_secret', TelegramChat.twitter_secret),
