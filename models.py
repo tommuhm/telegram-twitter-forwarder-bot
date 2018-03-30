@@ -8,6 +8,7 @@ from tweepy.auth import OAuthHandler
 
 
 class TwitterUser(Model):
+    user_id = IntegerField(unique=True)
     screen_name = CharField(unique=True)
     name = CharField()
 
@@ -79,7 +80,6 @@ for t in (TwitterUser, TelegramChat, Subscription):
 db = SqliteDatabase('peewee.db', timeout=10)
 migrator = SqliteMigrator(db)
 operations = [
-    migrator.add_column('twitteruser', 'last_fetched', TwitterUser.last_fetched),
     migrator.add_column('telegramchat', 'twitter_request_token', TelegramChat.twitter_request_token),
     migrator.add_column('telegramchat', 'twitter_token', TelegramChat.twitter_token),
     migrator.add_column('telegramchat', 'twitter_secret', TelegramChat.twitter_secret),
