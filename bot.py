@@ -2,11 +2,10 @@ import logging
 
 import telegram
 import tweepy
-from pytz import timezone, utc
 from telegram import Bot, InputMedia, InputMediaPhoto, InputMediaVideo
 from telegram.error import TelegramError
 
-from models import TelegramChat, Tweet, Media
+from models import TelegramChat, Tweet, Media, TwitterUser
 from util import escape_markdown, prepare_tweet_text
 
 
@@ -91,3 +90,24 @@ class TwitterForwarderBot(Bot):
             return InputMediaVideo(media.url)
         else:
             return InputMediaPhoto(media.url)
+
+    def get_tw_user(self, tw_username):
+        try:
+            tw_user = self.tw.get_user(tw_username)
+        except tweepy.error.TweepError:
+            return None
+
+        db_user, _created = TwitterUser.get_or_create(
+            user_id=tw_user.id,
+            screen_name=tw_user.screen_name,
+            defaults={
+                'name': tw_user.name,
+            },
+        )
+
+        if not _created:
+            if db_user.name != tw_user.name:
+                db_user.name = tw_user.name
+                db_user.save()
+
+        return db_user
