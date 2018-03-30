@@ -8,7 +8,7 @@ import tweepy
 from tweepy.auth import OAuthHandler
 from tweepy.error import TweepError
 
-#from models import Subscription
+from models import Subscription
 from util import with_touched_chat, escape_markdown, markdown_twitter_usernames
 
 TIMEZONE_LIST_URL = "https://en.wikipedia.org/wiki/List_of_tz_database_time_zones"
@@ -30,6 +30,9 @@ def cmd_help(bot, update, chat=None):
         bot.reply(update, """
 Hello! This bot forwards you updates from twitter streams!
 Here's the commands:
+- /sub - subscribes to updates from users
+- /unsub - unsubscribes from users
+- /list  - lists current subscriptions
 - /wipe - remove all the data about you and your subscriptions
 - /auth - start Twitter authorization process
 - /verify - send Twitter verifier code to complete authorization process
@@ -42,6 +45,112 @@ This bot is being worked on, so it may break sometimes. Maker of original bot @f
             u'\U0001F604'),
                   disable_web_page_preview=True,
                   parse_mode=telegram.ParseMode.MARKDOWN)
+
+@with_touched_chat
+def cmd_sub(bot, update, args, chat=None):
+    if len(args) < 1:
+        bot.reply(update, "Use /sub username1 username2 username3 ...")
+        return
+    tw_usernames = args
+    not_found = []
+    already_subscribed = []
+    successfully_subscribed = []
+
+    for tw_username in tw_usernames:
+        tw_user = bot.get_tw_user(tw_username)
+
+        if tw_user is None:
+            not_found.append(tw_username)
+            continue
+
+        if Subscription.select().where(
+                Subscription.tw_user == tw_user,
+                Subscription.tg_chat == chat).count() == 1:
+            already_subscribed.append(tw_user.full_name)
+            continue
+
+        Subscription.create(tg_chat=chat, tw_user=tw_user)
+        successfully_subscribed.append(tw_user.full_name)
+
+    reply = ""
+
+    if len(not_found) is not 0:
+        reply += "Sorry, I didn't find username{} {}\n\n".format(
+                     "" if len(not_found) is 1 else "s",
+                     ", ".join(not_found)
+                 )
+
+    if len(already_subscribed) is not 0:
+        reply += "You're already subscribed to {}\n\n".format(
+                     ", ".join(already_subscribed)
+                 )
+
+    if len(successfully_subscribed) is not 0:
+        reply += "I've added your subscription to {}".format(
+                     ", ".join(successfully_subscribed)
+                 )
+
+    bot.reply(update, reply)
+
+
+@with_touched_chat
+def cmd_unsub(bot, update, args, chat=None):
+    if len(args) < 1:
+        bot.reply(update, "Use /unsub username1 username2 username3 ...")
+        return
+    tw_usernames = args
+    not_found = []
+    successfully_unsubscribed = []
+
+    for tw_username in tw_usernames:
+        tw_user = bot.get_tw_user(tw_username)
+
+        if tw_user is None or Subscription.select().where(
+                Subscription.tw_user == tw_user,
+                Subscription.tg_chat == chat).count() == 0:
+            not_found.append(tw_username)
+            continue
+
+        Subscription.delete().where(
+            Subscription.tw_user == tw_user,
+            Subscription.tg_chat == chat).execute()
+
+        successfully_unsubscribed.append(tw_user.full_name)
+
+    reply = ""
+
+    if len(not_found) is not 0:
+        reply += "I didn't find any subscription to {}\n\n".format(
+                     ", ".join(not_found)
+                 )
+
+    if len(successfully_unsubscribed) is not 0:
+        reply += "You are no longer subscribed to {}".format(
+                     ", ".join(successfully_unsubscribed)
+        )
+
+    bot.reply(update, reply)
+
+
+@with_touched_chat
+def cmd_list(bot, update, chat=None):
+    subscriptions = list(Subscription.select().where(
+                         Subscription.tg_chat == chat))
+
+    if len(subscriptions) == 0:
+        return bot.reply(update, 'You have no subscriptions yet! Add one with /sub username')
+
+    subs = ['']
+    for sub in subscriptions:
+        subs.append(sub.tw_user.full_name)
+
+    subject = "This group is" if chat.is_group else "You are"
+
+    bot.reply(
+        update,
+        subject + " subscribed to the following Twitter users:\n" +
+        "\n - ".join(subs) + "\n\nYou can remove any of them using /unsub username")
+
 
 @with_touched_chat
 def cmd_wipe(bot, update, chat=None):
